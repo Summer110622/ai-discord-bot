@@ -1,20 +1,18 @@
-# AI Discord Bot
+# AI HTTP Bot
 
-A Discord bot that uses the OpenRouter API to provide AI-powered responses to user questions through slash commands.
+An HTTP service that uses the OpenRouter API to provide AI-powered responses to user questions via a simple JSON API.
 
 ## Features
 
 - 🤖 AI-powered responses using OpenRouter API
 - 📝 Customizable system prompt via XML file
-- ⚡ Slash command `/ask` for easy interaction
-- 🎨 Beautiful embed responses
+- ⚡ Simple `/ask` POST endpoint for easy integration
 - 🔧 Configurable AI model and parameters
-- 🛡️ Error handling and rate limiting
+- 🛡️ Basic error handling
 
 ## Prerequisites
 
 - Node.js 16.9.0 or higher
-- A Discord bot token
 - An OpenRouter API key
 
 ## Setup Instructions
@@ -23,7 +21,7 @@ A Discord bot that uses the OpenRouter API to provide AI-powered responses to us
 
 ```bash
 git clone <your-repo-url>
-cd ai-bot
+cd ai-http-bot
 npm install
 ```
 
@@ -36,9 +34,8 @@ npm install
 
 2. Edit `.env` and add your credentials:
    ```env
-   # Discord Bot Configuration
-   DISCORD_TOKEN=your_discord_bot_token_here
-   DISCORD_CLIENT_ID=your_discord_client_id_here
+   # Server Configuration
+   PORT=3000
 
    # OpenRouter API Configuration
    OPENROUTER_API_KEY=your_openrouter_api_key_here
@@ -50,30 +47,13 @@ npm install
    TEMPERATURE=0.7
    ```
 
-### 3. Discord Bot Setup
-
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
-2. Create a new application
-3. Go to the "Bot" section and create a bot
-4. Copy the bot token and add it to your `.env` file
-5. Go to "OAuth2" > "URL Generator"
-6. Select "bot" and "applications.commands" scopes
-7. Select the permissions you want (at minimum: "Send Messages", "Use Slash Commands")
-8. Use the generated URL to invite the bot to your server
-
-### 4. OpenRouter API Setup
+### 3. OpenRouter API Setup
 
 1. Go to [OpenRouter](https://openrouter.ai/)
 2. Create an account and get your API key
 3. Add the API key to your `.env` file
 
-### 5. Deploy Commands
-
-```bash
-node deploy-commands.js
-```
-
-### 6. Start the Bot
+### 4. Start the Server
 
 ```bash
 npm start
@@ -84,15 +64,27 @@ For development with auto-restart:
 npm run dev
 ```
 
+The server will start on the port specified in your `.env` file (default: 3000).
+
 ## Usage
 
-Once the bot is running, users can interact with it using the `/ask` slash command:
+Once the server is running, you can send a POST request to the `/ask` endpoint with a JSON payload containing your question.
 
-```
-/ask question: What is the capital of France?
+**Example using `curl`:**
+
+```bash
+curl -X POST http://localhost:3000/ask \
+-H "Content-Type: application/json" \
+-d '{"question": "What is the capital of France?"}'
 ```
 
-The bot will respond with an AI-generated answer in a beautiful embed format.
+The API will respond with a JSON object containing the AI-generated answer:
+
+```json
+{
+  "response": "The capital of France is Paris."
+}
+```
 
 ## Configuration
 
@@ -100,15 +92,13 @@ The bot will respond with an AI-generated answer in a beautiful embed format.
 
 The bot's behavior is controlled by the `system-prompt.xml` file. You can customize:
 
-- **Role**: The bot's primary function
-- **Guidelines**: How the bot should behave
-- **Limitations**: What the bot should not do
-- **Formatting**: How responses should be formatted for Discord
+- **Role**: The AI's primary function
+- **Guidelines**: How the AI should behave
+- **Limitations**: What the AI should not do
 
 ### Environment Variables
 
-- `DISCORD_TOKEN`: Your Discord bot token
-- `DISCORD_CLIENT_ID`: Your Discord application client ID
+- `PORT`: The port for the HTTP server to listen on (default: 3000)
 - `OPENROUTER_API_KEY`: Your OpenRouter API key
 - `OPENROUTER_BASE_URL`: OpenRouter API base URL (usually doesn't need to change)
 - `DEFAULT_MODEL`: The AI model to use (default: anthropic/claude-3.5-sonnet)
@@ -129,14 +119,13 @@ OpenRouter supports many AI models. Some popular options:
 
 ### Common Issues
 
-1. **Bot not responding**: Check if the bot token is correct and the bot is online
-2. **Commands not working**: Make sure you've run `deploy-commands.js` and the bot has the "Use Slash Commands" permission
-3. **API errors**: Verify your OpenRouter API key is correct and you have sufficient credits
-4. **Permission errors**: Ensure the bot has the necessary permissions in your Discord server
+1. **Server not starting**: Check the console for error messages. Ensure the port is not already in use.
+2. **API errors**: Verify your OpenRouter API key is correct and you have sufficient credits. Check the server logs for detailed error messages from the API.
+3. **Bad request (400)**: Make sure you are sending a POST request with `Content-Type: application/json` and your request body is valid JSON, like `{"question": "your question"}`.
 
 ### Logs
 
-The bot provides detailed console logs for debugging. Check the console output for any error messages.
+The application provides detailed console logs for debugging. Check the console output for any error messages.
 
 ## Contributing
 
@@ -144,4 +133,4 @@ Feel free to submit issues and enhancement requests!
 
 ## License
 
-MIT License - see LICENSE file for details. 
+MIT License - see LICENSE file for details.

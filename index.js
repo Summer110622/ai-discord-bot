@@ -1,20 +1,11 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require('discord.js');
-const { REST, Routes } = require('discord.js');
+const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-// Create a new client instance
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-    ],
-});
-
-// Command collection
-client.commands = new Collection();
+const app = express();
+app.use(express.json()); // Middleware to parse JSON bodies
 
 // Load system prompt
 function loadSystemPrompt() {
@@ -26,18 +17,16 @@ function loadSystemPrompt() {
         const roleMatch = systemPromptContent.match(/<role>(.*?)<\/role>/s);
         const guidelinesMatch = systemPromptContent.match(/<guidelines>(.*?)<\/guidelines>/s);
         const limitationsMatch = systemPromptContent.match(/<limitations>(.*?)<\/limitations>/s);
-        const formattingMatch = systemPromptContent.match(/<discord-specific>(.*?)<\/discord-specific>/s);
 
         let systemPrompt = '';
         if (roleMatch) systemPrompt += roleMatch[1].trim() + '\n\n';
         if (guidelinesMatch) systemPrompt += 'Guidelines:\n' + guidelinesMatch[1].trim() + '\n\n';
         if (limitationsMatch) systemPrompt += 'Limitations:\n' + limitationsMatch[1].trim() + '\n\n';
-        if (formattingMatch) systemPrompt += 'Formatting:\n' + formattingMatch[1].trim();
 
         return systemPrompt.trim();
     } catch (error) {
         console.error('Error loading system prompt:', error);
-        return 'You are a helpful AI assistant integrated into a Discord bot. Provide accurate, informative, and engaging responses to user questions.';
+        return 'You are a helpful AI assistant. Provide accurate, informative, and engaging responses to user questions.';
     }
 }
 
@@ -66,7 +55,7 @@ async function askOpenRouter(question, systemPrompt) {
                     'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
                     'Content-Type': 'application/json',
                     'HTTP-Referer': 'https://liamgrant.com',
-                    'X-Title': 'AI Discord Bot'
+                    'X-Title': 'AI HTTP Bot'
                 }
             }
         );
@@ -84,84 +73,36 @@ async function askOpenRouter(question, systemPrompt) {
     }
 }
 
-// Slash command handler
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+// Simple route for testing if the server is up
+app.get('/', (req, res) => {
+    res.send('AI Bot server is running.');
+});
 
-    const { commandName } = interaction;
+// Endpoint to handle AI questions
+app.post('/ask', async (req, res) => {
+    const { question } = req.body;
 
-    if (commandName === 'ask') {
-        const question = interaction.options.getString('question');
+    if (!question) {
+        return res.status(400).json({ error: 'Please provide a question.' });
+    }
 
-        if (!question) {
-            await interaction.reply({ content: 'Please provide a question!', ephemeral: true });
-            return;
-        }
-
-        // Defer the reply since AI responses can take time
-        await interaction.deferReply();
-
-        try {
-            const systemPrompt = loadSystemPrompt();
-            const aiResponse = await askOpenRouter(question, systemPrompt);
-
-            // Create an embed for the response
-            const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle(`${question}`)
-                .setDescription(aiResponse)
-                .setFooter({ text: `Asked by ${interaction.user.username}` })
-                .setTimestamp();
-
-            await interaction.editReply({ embeds: [embed] });
-        } catch (error) {
-            console.error('Error processing ask command:', error);
-            await interaction.editReply({
-                content: `Sorry, couldn't answer '${question}'. Please try again later.`,
-                ephemeral: false
-            });
-        }
+    try {
+        const systemPrompt = loadSystemPrompt();
+        const aiResponse = await askOpenRouter(question, systemPrompt);
+        res.json({ response: aiResponse });
+    } catch (error) {
+        console.error('Error processing ask command:', error);
+        res.status(500).json({ error: `Sorry, couldn't answer '${question}'. Please try again later.` });
     }
 });
 
-// Bot ready event
-client.once('ready', () => {
-    console.log(`🤖 Bot Name: ${client.user.username}`);
-    console.log(`🆔 Bot ID: ${client.user.id}`);
-    console.log(`📊 Serving ${client.guilds.cache.size} guilds`);
-
-    // Log guild information for debugging
-    if (client.guilds.cache.size > 0) {
-        console.log('📋 Connected to guilds:');
-        client.guilds.cache.forEach(guild => {
-            console.log(`  - ${guild.name} (${guild.id})`);
-        });
-    } else {
-        console.log('⚠️  Bot is not connected to any guilds yet. Please invite it to your server.');
-    }
-
-    // Set bot presence after a short delay to avoid shard issues
-    setTimeout(() => {
-        try {
-            client.user.setPresence({
-                activities: [{ name: '/ask for AI help', type: 3 }], // 3 = Watching
-                status: 'online',
-            });
-            console.log('✅ Bot presence set successfully');
-        } catch (error) {
-            console.log('⚠️  Could not set bot presence (this is normal):', error.message);
-        }
-    }, 2000);
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
 });
 
-// Error handling
-client.on('error', error => {
-    console.error('Discord client error:', error);
-});
-
+// Error handling for unhandled promise rejections
 process.on('unhandledRejection', error => {
     console.error('Unhandled promise rejection:', error);
 });
-
-// Login to Discord
-client.login(process.env.DISCORD_TOKEN); 
