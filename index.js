@@ -96,13 +96,9 @@ app.post('/ask', async (req, res) => {
     }
 });
 
-// Start the server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server is running on port ${PORT}`);
-});
-
 // Error handling for unhandled promise rejections
 process.on('unhandledRejection', error => {
     console.error('Unhandled promise rejection:', error);
 });
+
+module.exports = app;
