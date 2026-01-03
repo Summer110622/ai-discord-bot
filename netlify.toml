@@ -2,7 +2,7 @@
   functions = "netlify/functions"
 
 [functions]
-  included_files = ["system-prompt.xml"]
+  included_files = ["system-prompt.xml", "public/**"]
 
 [[redirects]]
   from = "/*"

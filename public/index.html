@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIチャット実験</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
+        h1, h2 { color: #333; }
+        #response {
+            white-space: pre-wrap;
+            background-color: #f4f4f4;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            min-height: 50px;
+        }
+        form { display: flex; gap: 10px; margin-bottom: 20px; }
+        input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 3px; }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; }
+    </style>
+</head>
+<body>
+    <h1>AIチャット実験</h1>
+    <p>Netlify上で動作するAIに質問できます。</p>
+
+    <form id="ask-form">
+        <input type="text" id="question" placeholder="質問を入力してください..." required autocomplete="off">
+        <button type="submit" id="submit-button">送信</button>
+    </form>
+
+    <h2>回答:</h2>
+    <div id="response">AIからの回答がここに表示されます。</div>
+
+    <script src="script.js"></script>
+</body>
+</html>

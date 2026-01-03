@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const app = express();
 app.use(express.json()); // Middleware to parse JSON bodies
+app.use(express.static('public')); // Serve static files from 'public' directory
 
 // Load system prompt
 function loadSystemPrompt() {
@@ -34,7 +35,7 @@ function loadSystemPrompt() {
 async function askOpenRouter(question, systemPrompt) {
     try {
         const response = await axios.post(
-            `${process.env.OPENROUTER_BASE_URL}/chat/completions`,
+            `${process.env.OPENROUTER_BASE_URL}/v1/chat/completions`,
             {
                 model: process.env.DEFAULT_MODEL || 'anthropic/claude-3.5-sonnet',
                 messages: [
