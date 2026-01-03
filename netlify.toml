@@ -1,6 +1,9 @@
 [build]
   functions = "netlify/functions"
 
+[functions]
+  included_files = ["system-prompt.xml"]
+
 [[redirects]]
   from = "/*"
   to = "/.netlify/functions/api"

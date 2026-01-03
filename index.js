@@ -34,7 +34,7 @@ function loadSystemPrompt() {
 async function askOpenRouter(question, systemPrompt) {
     try {
         const response = await axios.post(
-            `${process.env.OPENROUTER_BASE_URL}/v1/chat/completions`,
+            `${process.env.OPENROUTER_BASE_URL}/chat/completions`,
             {
                 model: process.env.DEFAULT_MODEL || 'anthropic/claude-3.5-sonnet',
                 messages: [
