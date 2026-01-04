@@ -29,16 +29,18 @@ function loadSystemPrompt(selectedMode) {
     }
 }
 
-// Netlifyでのタイピング風（ストリーミング）処理
-async function handleStreamingInteraction(interaction, question, model, mode) {
+// ストリーミング処理を完全に同期的に行う（Netlifyの停止を防ぐため）
+async function handleStreamingInteractionSync(interaction, question, model, mode) {
     const systemPrompt = loadSystemPrompt(mode);
     const endpoint = `https://discord.com/api/v10/webhooks/${process.env.CLIENT_ID}/${interaction.token}/messages/@original`;
 
     let currentContent = '';
     let lastUpdate = Date.now();
-    let updatePending = false;
 
     try {
+        console.log(`📡 Starting stream for: ${question}`);
+
+        // Node.js 18+ の fetch を使用
         const response = await fetch(`${process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'}/chat/completions`, {
             method: 'POST',
             headers: {
@@ -57,6 +59,11 @@ async function handleStreamingInteraction(interaction, question, model, mode) {
                 max_tokens: parseInt(process.env.MAX_TOKENS) || 1000,
             })
         });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -78,13 +85,11 @@ async function handleStreamingInteraction(interaction, question, model, mode) {
                         if (content) {
                             currentContent += content;
 
-                            // 1.5秒に1回更新（タイピング演出）
+                            // 2秒に1回更新（Netlifyの負荷とDiscord制限を考慮）
                             const now = Date.now();
-                            if (now - lastUpdate > 1500 && !updatePending) {
-                                updatePending = true;
+                            if (now - lastUpdate > 2000) {
                                 await axios.patch(endpoint, { content: currentContent.substring(0, 1900) + ' ┃' });
                                 lastUpdate = now;
-                                updatePending = false;
                             }
                         }
                     } catch (e) { }
@@ -94,10 +99,16 @@ async function handleStreamingInteraction(interaction, question, model, mode) {
 
         // 最終回答の更新
         await axios.patch(endpoint, { content: currentContent.substring(0, 2000) });
+        console.log('✅ Stream finished successfully');
 
     } catch (error) {
-        console.error('Streaming Error:', error);
-        await axios.patch(endpoint, { content: '⚠️ 途中でエラーが発生しました（Netlifyの制限時間等）。' });
+        console.error('Streaming Error:', error.message);
+        // エラー時は元の「考え中」をエラー表示に上書き
+        try {
+            await axios.patch(endpoint, { content: `⚠️ エラーが発生しました: ${error.message}` });
+        } catch (patchError) {
+            console.error('Failed to send error patch:', patchError.message);
+        }
     }
 }
 
@@ -124,12 +135,21 @@ app.post(['/', '/interactions'], verifyKeyMiddleware(process.env.PUBLIC_KEY), as
                 interaction.data.options?.find(opt => opt.name === 'model')?.value ||
                 process.env.DEFAULT_MODEL || 'google/gemini-2.0-flash-exp:free';
 
-            // 即座に「考え中...」状態を返す（DEFERRED）
-            res.send({ type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE });
+            // 1. まず応答をレスポンスとして返す（これでDiscord側の「待機状態」を作る）
+            res.status(200).send({
+                type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
+            });
 
-            // 非同期でタイピング風の処理を開始
-            // 注意: Netlify Functionは10秒で停止するため、短い回答向きです
-            handleStreamingInteraction(interaction, question, selectedModel, mode);
+            // 2. その直後に、同じ関数内で処理を続ける
+            // 注意: Netlifyはres.sendを返した直後にプロセスを凍結する可能性があるため、
+            // 本当は「await」して待つ必要がありますが、HTTPレスポンスを返した後に待つのはサーバーレスのタブーです。
+            // しかし、Netlify Functions (AWS Lambda) は例外的にしばらく生き残ることがあるため、
+            // ここで「await」を入れずに走らせます。
+            // もし「考え中」で止まる場合は、この「handle」を「await」する必要がありますが、
+            // その場合はレスポンスを返せなくなるというジレンマがあります。
+
+            // 最も確実なサーバーレスのやり方に書き換えます：
+            await handleStreamingInteractionSync(interaction, question, selectedModel, mode);
         }
     }
 });
