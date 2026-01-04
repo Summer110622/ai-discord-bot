@@ -67,7 +67,9 @@ async function askOpenRouter(question, model, mode) {
 }
 
 // Netlify / Discord Interactions Endpoint
-app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (req, res) => {
+// 両方のパスに対応させることで設定ミスを防ぎます
+app.post(['/', '/interactions'], verifyKeyMiddleware(process.env.PUBLIC_KEY), async (req, res) => {
+    console.log('📥 Received Interaction:', req.body.type);
     const interaction = req.body;
 
     // DiscordのURL検証用（PING）のレスポンス
