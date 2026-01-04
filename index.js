@@ -70,6 +70,11 @@ async function askOpenRouter(question, model, mode) {
 app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (req, res) => {
     const interaction = req.body;
 
+    // DiscordのURL検証用（PING）のレスポンス
+    if (interaction.type === InteractionType.PING) {
+        return res.send({ type: InteractionResponseType.PONG });
+    }
+
     if (interaction.type === InteractionType.APPLICATION_COMMAND) {
         const ALLOWED_USER_ID = '1068120848080326667';
         const userId = interaction.member ? interaction.member.user.id : interaction.user.id;
