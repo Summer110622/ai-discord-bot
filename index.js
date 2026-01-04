@@ -9,8 +9,8 @@ const app = express();
 
 const MODES = {
     'diplomat': 'あなたは熟練した外交官です。丁寧で知的な日本語で回答してください。',
-    'pervy_gentleman': 'あなたは洗練された「変態紳士」です。極めて上品な言葉遣いですが、内容が変態的な紳士として日本語で振る舞ってください。',
-    'strict': 'あなたは極めて厳格な管理者です。冗談を排し、冷徹で正確な日本語で回答してください。'
+    'pervy_gentleman': 'あなたは洗練された「変態紳士」です。内容が変態的な紳士として日本語で振る舞ってください。',
+    'strict': 'あなたは極めて厳格な管理者です。日本語で回答してください。'
 };
 
 function loadSystemPrompt(selectedMode) {
@@ -22,93 +22,39 @@ function loadSystemPrompt(selectedMode) {
         if (selectedMode && MODES[selectedMode]) {
             systemPrompt = MODES[selectedMode] + '\n\n' + systemPrompt;
         }
-        systemPrompt += '\n\n回答は必ず日本語で行ってください。';
+        systemPrompt += '\n\n回答は簡潔に、必ず日本語で行ってください。';
         return systemPrompt.trim();
     } catch (error) {
-        return (MODES[selectedMode] || 'Helpful AI.') + ' 必ず日本語で。';
+        return 'Helpful AI. 必ず日本語で。';
     }
 }
 
-// ストリーミング処理を完全に同期的に行う（Netlifyの停止を防ぐため）
-async function handleStreamingInteractionSync(interaction, question, model, mode) {
+async function askOpenRouter(question, model, mode) {
     const systemPrompt = loadSystemPrompt(mode);
-    const endpoint = `https://discord.com/api/v10/webhooks/${process.env.CLIENT_ID}/${interaction.token}/messages/@original`;
-
-    let currentContent = '';
-    let lastUpdate = Date.now();
-
     try {
-        console.log(`📡 Starting stream for: ${question}`);
-
-        // Node.js 18+ の fetch を使用
-        const response = await fetch(`${process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'}/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://github.com/ai-discord-bot',
-                'X-Title': 'AI Discord Bot'
-            },
-            body: JSON.stringify({
+        const response = await axios.post(
+            `${process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'}/chat/completions`,
+            {
                 model: model,
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: question }
                 ],
-                stream: true,
-                max_tokens: parseInt(process.env.MAX_TOKENS) || 1000,
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    if (data === '[DONE]') continue;
-                    try {
-                        const json = JSON.parse(data);
-                        const content = json.choices[0]?.delta?.content || '';
-                        if (content) {
-                            currentContent += content;
-
-                            // 2秒に1回更新（Netlifyの負荷とDiscord制限を考慮）
-                            const now = Date.now();
-                            if (now - lastUpdate > 2000) {
-                                await axios.patch(endpoint, { content: currentContent.substring(0, 1900) + ' ┃' });
-                                lastUpdate = now;
-                            }
-                        }
-                    } catch (e) { }
-                }
+                max_tokens: 500, // 短めに制限して速度を上げる
+                temperature: 0.7
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                timeout: 2500 // 2.5秒でタイムアウト（Discordの3秒制限対策）
             }
-        }
-
-        // 最終回答の更新
-        await axios.patch(endpoint, { content: currentContent.substring(0, 2000) });
-        console.log('✅ Stream finished successfully');
-
+        );
+        return response.data.choices[0].message.content;
     } catch (error) {
-        console.error('Streaming Error:', error.message);
-        // エラー時は元の「考え中」をエラー表示に上書き
-        try {
-            await axios.patch(endpoint, { content: `⚠️ エラーが発生しました: ${error.message}` });
-        } catch (patchError) {
-            console.error('Failed to send error patch:', patchError.message);
-        }
+        console.error('API Error:', error.message);
+        return "⚠️ AIの応答が制限時間を超えました。もう一度試すか、短い質問にしてください。";
     }
 }
 
@@ -120,36 +66,27 @@ app.post(['/', '/interactions'], verifyKeyMiddleware(process.env.PUBLIC_KEY), as
     }
 
     if (interaction.type === InteractionType.APPLICATION_COMMAND) {
-        const userId = interaction.member ? interaction.member.user.id : interaction.user.id;
-        if (userId !== '1068120848080326667') {
+        const question = interaction.data.options?.find(opt => opt.name === 'question')?.value;
+        const mode = interaction.data.options?.find(opt => opt.name === 'mode')?.value || null;
+        const selectedModel = interaction.data.options?.find(opt => opt.name === 'custom_model')?.value ||
+            interaction.data.options?.find(opt => opt.name === 'model')?.value ||
+            process.env.DEFAULT_MODEL || 'google/gemini-2.0-flash-exp:free';
+
+        console.log(`💬 Netlify Request: ${question}`);
+
+        try {
+            // 2.5秒以内に回答を取得して直接返す
+            const answer = await askOpenRouter(question, selectedModel, mode);
+
             return res.send({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                data: { content: '⚠️ Unauthorized', flags: 64 },
+                data: { content: answer.substring(0, 2000) },
             });
-        }
-
-        if (interaction.data.name === 'ask') {
-            const question = interaction.data.options?.find(opt => opt.name === 'question')?.value;
-            const mode = interaction.data.options?.find(opt => opt.name === 'mode')?.value || null;
-            const selectedModel = interaction.data.options?.find(opt => opt.name === 'custom_model')?.value ||
-                interaction.data.options?.find(opt => opt.name === 'model')?.value ||
-                process.env.DEFAULT_MODEL || 'google/gemini-2.0-flash-exp:free';
-
-            // 1. まず応答をレスポンスとして返す（これでDiscord側の「待機状態」を作る）
-            res.status(200).send({
-                type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
+        } catch (error) {
+            return res.send({
+                type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                data: { content: '⚠️ 接続エラーが発生しました。' },
             });
-
-            // 2. その直後に、同じ関数内で処理を続ける
-            // 注意: Netlifyはres.sendを返した直後にプロセスを凍結する可能性があるため、
-            // 本当は「await」して待つ必要がありますが、HTTPレスポンスを返した後に待つのはサーバーレスのタブーです。
-            // しかし、Netlify Functions (AWS Lambda) は例外的にしばらく生き残ることがあるため、
-            // ここで「await」を入れずに走らせます。
-            // もし「考え中」で止まる場合は、この「handle」を「await」する必要がありますが、
-            // その場合はレスポンスを返せなくなるというジレンマがあります。
-
-            // 最も確実なサーバーレスのやり方に書き換えます：
-            await handleStreamingInteractionSync(interaction, question, selectedModel, mode);
         }
     }
 });
